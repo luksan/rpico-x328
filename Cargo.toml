@@ -1,0 +1,24 @@
+[package]
+name = "rpico-x328"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+arrayvec = { version = "0.7.2" , default-features = false }
+cortex-m = "0.7.5"
+cortex-m-rt = "0.7.1"
+cortex-m-rtic = "1.1.3"
+rp2040-monotonic = "1.1.0"
+embedded-graphics = "0.7.1"
+embedded-hal = { version = "0.2.7", features = ["unproven"]}
+embedded-time = "0.12.1"
+heapless = "0.7.16"
+pimoroni-pico-explorer = "0.3.1"
+panic-halt = "0.2.0"
+systick-monotonic = "1.0.0"
+usb-device = "0.2.9"
+usbd-serial = "0.1.1"
+
+x328-proto = { path = "../rust-x328-proto", default-features = false}

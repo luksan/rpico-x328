@@ -14,8 +14,6 @@ use embedded_graphics::{
     text::{Alignment, Text},
 };
 use embedded_hal::digital::v2::OutputPin;
-use embedded_time::duration::Extensions;
-use embedded_time::rate::*;
 use hal::{adc::Adc, clocks::*, pac::interrupt, timer::Alarm, watchdog::Watchdog, Sio};
 use heapless::{
     pool,
@@ -108,7 +106,7 @@ mod app {
         let cp: CorePeripherals = ctx.core;
 
         let mut watchdog = Watchdog::new(pac.WATCHDOG);
-        let clocks = init_clocks_and_plls(
+        let clocks: hal::clocks::ClocksManager = init_clocks_and_plls(
             XOSC_CRYSTAL_FREQ,
             pac.XOSC,
             pac.CLOCKS,
@@ -126,7 +124,7 @@ mod app {
         let sio = Sio::new(pac.SIO);
 
         let mut delay =
-            cortex_m::delay::Delay::new(cp.SYST, clocks.system_clock.get_freq().integer());
+            cortex_m::delay::Delay::new(cp.SYST, clocks.system_clock.get_freq().to_Hz());
 
         let (mut explorer, pins) = PicoExplorer::new(
             pac.IO_BANK0,
@@ -187,7 +185,7 @@ mod app {
             },
             init::Monotonics(Systick::new(
                 delay.free(),
-                clocks.system_clock.get_freq().integer(),
+                clocks.system_clock.get_freq().to_Hz(),
             )),
         )
     }

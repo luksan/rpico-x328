@@ -4,7 +4,6 @@
 
 use core::fmt::Write;
 use core::mem::MaybeUninit;
-use core::ptr::read;
 
 use arrayvec::ArrayString;
 use arrayvec::ArrayVec;
@@ -16,16 +15,16 @@ use embedded_graphics::{
 };
 use embedded_hal::digital::v2::{OutputPin, StatefulOutputPin};
 use embedded_hal::prelude::*;
-use hal::pac::{interrupt, CorePeripherals, Peripherals, RESETS, USBCTRL_DPRAM, USBCTRL_REGS};
-use hal::{adc::Adc, clocks::*, gpio, timer::Alarm, watchdog::Watchdog, Sio};
+use hal::pac::{CorePeripherals, Peripherals};
+use hal::{adc::Adc, clocks::*, gpio, watchdog::Watchdog, Sio};
 use heapless::{
     pool,
     pool::singleton::{Box, Pool},
     spsc::{Consumer, Producer, Queue},
 };
 use panic_halt as _;
-use pimoroni_pico_explorer::{entry, hal, pac, Button, PicoExplorer, XOSC_CRYSTAL_FREQ};
-use rp2040_monotonic::{ExtU64, Rp2040Monotonic};
+use pimoroni_pico_explorer::{hal, PicoExplorer, XOSC_CRYSTAL_FREQ};
+use rp2040_monotonic::ExtU64;
 use rtic::mutex_prelude::*;
 use systick_monotonic::Systick;
 // USB Device support
@@ -48,8 +47,6 @@ mod app {
 
     type DispLine = ArrayString<25>;
     pool!(DISP_TEXT: DispLine);
-
-    const SCAN_TIME_US: u32 = 10000;
 
     #[monotonic(binds = SysTick, default = true)]
     type MyMono = Systick<100>;
@@ -111,15 +108,14 @@ mod app {
         .ok()
         .unwrap();
 
-        let mut adc = Adc::new(pac.ADC, &mut pac.RESETS);
-        let mut temp_sense = adc.enable_temp_sensor();
+        let adc = Adc::new(pac.ADC, &mut pac.RESETS);
 
         let sio = Sio::new(pac.SIO);
 
         let mut delay =
             cortex_m::delay::Delay::new(cp.SYST, clocks.system_clock.get_freq().to_Hz());
 
-        let (mut explorer, pins) = PicoExplorer::new(
+        let (explorer, pins) = PicoExplorer::new(
             pac.IO_BANK0,
             pac.PADS_BANK0,
             sio.gpio_bank0,
@@ -143,10 +139,10 @@ mod app {
         let usb_bus = unsafe { usb_bus_uninit.assume_init_ref() };
 
         // Set up the USB Communications Class Device driver
-        let mut usb_serial = SerialPort::new(usb_bus);
+        let usb_serial = SerialPort::new(usb_bus);
 
         // Create a USB device with a fake VID and PID
-        let mut usb_device = UsbDeviceBuilder::new(usb_bus, UsbVidPid(0x16c0, 0x27dd))
+        let usb_device = UsbDeviceBuilder::new(usb_bus, UsbVidPid(0x16c0, 0x27dd))
             .manufacturer("Fake company")
             .product("Serial port")
             .serial_number("TEST")
@@ -244,7 +240,7 @@ mod app {
         local = [x328_node, disp_text_tx, gpio_2],
         shared = [usb_serial, led]
     )]
-    fn x328_task(mut ctx: x328_task::Context) {
+    fn x328_task(ctx: x328_task::Context) {
         let x328_task::LocalResources {
             x328_node,
             disp_text_tx,
@@ -304,12 +300,11 @@ mod app {
         local = [usb_device, gpio_1],
         shared = [usb_serial],
     )]
-    fn usb_irq(mut ctx: usb_irq::Context) {
-        use core::sync::atomic::{AtomicBool, Ordering};
+    fn usb_irq(ctx: usb_irq::Context) {
+        let usb_device: &mut UsbDevice<_> = ctx.local.usb_device;
+        let usb_irq::LocalResources { gpio_1, .. } = ctx.local;
 
-        let usb_irq::LocalResources { usb_device, gpio_1 } = ctx.local;
-
-        let mut serial = ctx.shared.usb_serial;
+        let serial = ctx.shared.usb_serial;
         // Poll the USB driver with all of our supported USB Classes
         let mut ready = false;
         serial.lock(|serial: &mut SerialPort<_>| {

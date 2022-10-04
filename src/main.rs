@@ -57,6 +57,7 @@ mod app {
         //  alarm: hal::timer::Alarm0,
         led: hal::gpio::Pin<hal::gpio::pin::bank0::Gpio25, hal::gpio::PushPullOutput>,
         usb_serial: SerialPort<'static, hal::usb::UsbBus>,
+        usb_serial2: SerialPort<'static, hal::usb::UsbBus>,
     }
 
     #[local]
@@ -140,6 +141,7 @@ mod app {
 
         // Set up the USB Communications Class Device driver
         let usb_serial = SerialPort::new(usb_bus);
+        let usb_serial2 = SerialPort::new(usb_bus);
 
         // Create a USB device with a fake VID and PID
         let usb_device = UsbDeviceBuilder::new(usb_bus, UsbVidPid(0x16c0, 0x27dd))
@@ -155,12 +157,14 @@ mod app {
         let x328_node = x328_proto::node::Node::new(X328_NODE_ADDR);
 
         x328_task::spawn();
+        usb_stream::spawn_after(1.secs());
         (
             Shared {
                 // timer,
                 //  alarm,
                 led,
                 usb_serial,
+                usb_serial2,
             },
             Local {
                 gpio_0: pins.gpio0.into_push_pull_output(),
@@ -294,25 +298,36 @@ mod app {
         }
     }
 
+    #[task(shared = [usb_serial2])]
+    fn usb_stream(ctx: usb_stream::Context) {
+        let mut s = ctx.shared.usb_serial2;
+        s.lock(|serial| {
+            serial.write(b"123\r\n");
+        });
+        usb_stream::spawn_after(1.secs());
+    }
+
     #[task(
         binds = USBCTRL_IRQ,
         priority=2,
         local = [usb_device, gpio_1],
-        shared = [usb_serial],
+        shared = [usb_serial, usb_serial2],
     )]
     fn usb_irq(ctx: usb_irq::Context) {
         let usb_device: &mut UsbDevice<_> = ctx.local.usb_device;
         let usb_irq::LocalResources { gpio_1, .. } = ctx.local;
 
         let serial = ctx.shared.usb_serial;
+        let usb_serial2 = ctx.shared.usb_serial2;
         // Poll the USB driver with all of our supported USB Classes
         let mut ready = false;
-        serial.lock(|serial: &mut SerialPort<_>| {
+        (serial, usb_serial2).lock(|serial: &mut SerialPort<_>, usb_serial2| {
             gpio_1.set_high();
-            ready = usb_device.poll(&mut [serial]);
+            ready = usb_device.poll(&mut [serial, usb_serial2]);
             if ready {
                 let mut buf = [0u8; 0];
                 serial.read(&mut buf);
+                usb_serial2.read(&mut buf);
                 x328_task::spawn();
             }
             gpio_1.set_low();

@@ -2,36 +2,36 @@
 #![no_main]
 #![allow(unused, non_camel_case_types)]
 
-use arrayvec::ArrayString;
-use arrayvec::ArrayVec;
 use core::fmt::Write;
 use core::mem::MaybeUninit;
 use core::ptr::read;
+
+use arrayvec::ArrayString;
+use arrayvec::ArrayVec;
 use embedded_graphics::{
     mono_font::{ascii::FONT_10X20, MonoTextStyleBuilder},
     pixelcolor::Rgb565,
     prelude::*,
-    text::{Alignment, Text},
+    text::{renderer::TextRenderer, Alignment, Text},
 };
-use embedded_hal::digital::v2::OutputPin;
-use hal::{adc::Adc, clocks::*, pac::interrupt, timer::Alarm, watchdog::Watchdog, Sio};
+use embedded_hal::digital::v2::{OutputPin, StatefulOutputPin};
+use embedded_hal::prelude::*;
+use hal::pac::{interrupt, CorePeripherals, Peripherals, RESETS, USBCTRL_DPRAM, USBCTRL_REGS};
+use hal::{adc::Adc, clocks::*, gpio, timer::Alarm, watchdog::Watchdog, Sio};
 use heapless::{
     pool,
     pool::singleton::{Box, Pool},
     spsc::{Consumer, Producer, Queue},
 };
 use panic_halt as _;
-use pimoroni_pico_explorer::entry;
-use pimoroni_pico_explorer::{hal, pac, Button, PicoExplorer, XOSC_CRYSTAL_FREQ};
+use pimoroni_pico_explorer::{entry, hal, pac, Button, PicoExplorer, XOSC_CRYSTAL_FREQ};
+use rp2040_monotonic::{ExtU64, Rp2040Monotonic};
+use rtic::mutex_prelude::*;
 use systick_monotonic::Systick;
-
 // USB Device support
 use usb_device::{class_prelude::*, prelude::*};
-
 // USB Communications Class Device support
 use usbd_serial::SerialPort;
-
-use crate::pac::{Peripherals, RESETS, USBCTRL_DPRAM, USBCTRL_REGS};
 use x328_proto::node::NodeState;
 
 // See 4.9.5 from RP2040 datasheet
@@ -45,12 +45,6 @@ const X328_NODE_ADDR: x328_proto::Address = x328_proto::addr(10);
 #[rtic::app(device = hal::pac, peripherals = true, dispatchers = [RTC_IRQ])]
 mod app {
     use super::*;
-    use crate::hal::gpio;
-    use crate::pac::CorePeripherals;
-    use embedded_graphics::text::renderer::TextRenderer;
-    use embedded_hal::digital::v2::StatefulOutputPin;
-    use embedded_hal::prelude::_embedded_hal_blocking_serial_Write;
-    use rp2040_monotonic::Rp2040Monotonic;
 
     type DispLine = ArrayString<25>;
     pool!(DISP_TEXT: DispLine);
@@ -58,7 +52,6 @@ mod app {
     const SCAN_TIME_US: u32 = 10000;
 
     #[monotonic(binds = SysTick, default = true)]
-    //type MyMono = rp2040_monotonic::Rp2040Monotonic;
     type MyMono = Systick<100>;
 
     #[shared]

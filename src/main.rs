@@ -277,7 +277,7 @@ mod app {
                     recv.receive_data(&data_in);
                 }
                 NodeState::SendData(send) => serial.lock(|serial| {
-                    serial.write(send.get_data());
+                    serial.write(send.send_data());
                 }),
                 NodeState::ReadParameter(read) => {
                     if let Some(mut line) =
@@ -289,10 +289,12 @@ mod app {
                     match *read.parameter() {
                         1 => read.send_reply_ok(4u16.into()),
                         _ => read.send_invalid_parameter(),
-                    }
+                    };
                 }
                 NodeState::WriteParameter(write) => match *write.parameter() {
-                    _ => write.write_ok(),
+                    _ => {
+                        write.write_ok();
+                    }
                 },
             }
         }
